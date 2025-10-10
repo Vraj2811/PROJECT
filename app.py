@@ -1,19 +1,59 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 import sqlite3
 import os
 from datetime import datetime
 from pathlib import Path
+from functools import wraps
+import random
 from ai import QuestionGenerator
 from paper_generation import PaperGeneration
 
 app = Flask(__name__)
 
 # Configuration
-app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
 
 # Database and folder configuration
 DATABASE_PATH = 'question_bank.db'
 QUESTION_BANK_FOLDER = 'Question Bank'
+
+# Simple user credentials (in production, use proper database with hashed passwords)
+USERS = {
+    'teacher': {'password': 'teacher123', 'role': 'teacher'},
+    'student': {'password': 'student123', 'role': 'student'},
+    # Add more users as needed
+    'admin': {'password': 'admin123', 'role': 'teacher'},
+    'john_doe': {'password': 'student456', 'role': 'student'}
+}
+
+def login_required(f):
+    """Decorator to require login for protected routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def teacher_required(f):
+    """Decorator to require teacher role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or session.get('role') != 'teacher':
+            flash('Access denied. Teacher privileges required.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def student_required(f):
+    """Decorator to require student role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or session.get('role') != 'student':
+            flash('Access denied. Student privileges required.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def init_database():
     """Initialize the SQLite database with the required table"""
@@ -115,9 +155,62 @@ DIFFICULTY_LEVELS = [
 
 @app.route('/')
 def index():
+    """Main landing page with login options"""
     return render_template('index.html')
 
+@app.route('/teacher-login')
+def teacher_login():
+    """Teacher login page"""
+    return render_template('teacher_login.html')
+
+@app.route('/student-login')
+def student_login():
+    """Student login page"""
+    return render_template('student_login.html')
+
+@app.route('/login', methods=['POST'])
+def login():
+    """Handle login for both teachers and students"""
+    username = request.form.get('username')
+    password = request.form.get('password')
+    role = request.form.get('role')  # 'teacher' or 'student'
+
+    if username in USERS and USERS[username]['password'] == password and USERS[username]['role'] == role:
+        session['user_id'] = username
+        session['role'] = role
+
+        if role == 'teacher':
+            return redirect(url_for('teacher_dashboard'))
+        else:
+            return redirect(url_for('student_dashboard'))
+    else:
+        flash('Invalid credentials. Please try again.', 'error')
+        if role == 'teacher':
+            return redirect(url_for('teacher_login'))
+        else:
+            return redirect(url_for('student_login'))
+
+@app.route('/logout')
+def logout():
+    """Logout user and clear session"""
+    session.clear()
+    flash('You have been logged out successfully.', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/teacher-dashboard')
+@teacher_required
+def teacher_dashboard():
+    """Teacher dashboard with navigation options"""
+    return render_template('teacher_dashboard.html', username=session.get('user_id'))
+
+@app.route('/student-dashboard')
+@student_required
+def student_dashboard():
+    """Student dashboard with practice options"""
+    return render_template('student_dashboard.html', username=session.get('user_id'))
+
 @app.route('/teacher')
+@teacher_required
 def teacher():
     return render_template('teacher.html',
                          question_types=QUESTION_TYPES,
@@ -125,6 +218,7 @@ def teacher():
                          difficulty_levels=DIFFICULTY_LEVELS)
 
 @app.route('/submit', methods=['POST'])
+@teacher_required
 def submit_question():
     try:
         # Get form data
@@ -271,6 +365,7 @@ def preview_markdown():
         }), 400
 
 @app.route('/questions')
+@login_required
 def view_questions():
     """View all questions in the database"""
     try:
@@ -318,11 +413,13 @@ def view_questions():
         }), 400
 
 @app.route('/practice')
+@student_required
 def practice():
     """Student practice interface"""
     return render_template('practice.html')
 
 @app.route('/api/practice/tree')
+@student_required
 def get_practice_tree():
     """Get hierarchical tree structure for practice"""
     try:
@@ -363,6 +460,7 @@ def get_practice_tree():
         }), 400
 
 @app.route('/api/practice/questions')
+@student_required
 def get_practice_questions():
     """Get questions for practice based on filters"""
     try:
@@ -415,6 +513,7 @@ def get_practice_questions():
         }), 400
 
 @app.route('/api/practice/question/<int:question_id>')
+@student_required
 def get_question_content(question_id):
     """Get full question content for practice"""
     try:
@@ -470,6 +569,7 @@ def get_question_content(question_id):
         }), 400
 
 @app.route('/create_paper')
+@teacher_required
 def create_paper():
     """Paper generation interface"""
     return render_template('create_paper.html',
@@ -478,6 +578,7 @@ def create_paper():
                          difficulty_levels=DIFFICULTY_LEVELS)
 
 @app.route('/api/paper/subjects')
+@teacher_required
 def get_paper_subjects():
     """Get available subjects for paper generation"""
     try:
@@ -495,6 +596,7 @@ def get_paper_subjects():
         }), 400
 
 @app.route('/api/paper/topics')
+@teacher_required
 def get_paper_topics():
     """Get available topics for a subject"""
     try:
@@ -519,6 +621,7 @@ def get_paper_topics():
         }), 400
 
 @app.route('/api/paper/subtopics')
+@teacher_required
 def get_paper_subtopics():
     """Get available subtopics for a subject and topic"""
     try:
@@ -545,6 +648,7 @@ def get_paper_subtopics():
         }), 400
 
 @app.route('/api/paper/generate', methods=['POST'])
+@teacher_required
 def generate_paper():
     """Generate a question paper based on criteria"""
     try:
@@ -569,6 +673,7 @@ def generate_paper():
         }), 400
 
 @app.route('/api/paper/save', methods=['POST'])
+@teacher_required
 def save_paper():
     """Save generated paper to file"""
     try:
@@ -596,6 +701,143 @@ def save_paper():
         return jsonify({
             'status': 'error',
             'message': f'Error saving paper: {str(e)}'
+        }), 400
+
+@app.route('/random-practice')
+@student_required
+def random_practice():
+    """Random question practice interface"""
+    return render_template('random_practice.html')
+
+@app.route('/api/practice/topics')
+@student_required
+def get_practice_topics():
+    """Get all available topics for practice selection"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT DISTINCT subject, topic, COUNT(*) as question_count
+            FROM questions
+            GROUP BY subject, topic
+            ORDER BY subject, topic
+        ''')
+
+        topics = []
+        for row in cursor.fetchall():
+            topics.append({
+                'subject': row[0],
+                'topic': row[1],
+                'question_count': row[2]
+            })
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'topics': topics
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/practice/random-question')
+@student_required
+def get_random_question():
+    """Get a random question based on selected topics"""
+    try:
+        selected_topics = request.args.getlist('topics')  # List of "subject:topic" strings
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        if selected_topics and selected_topics != ['all']:
+            # Build query for specific topics
+            topic_conditions = []
+            params = []
+
+            for topic in selected_topics:
+                if ':' in topic:
+                    subject, topic_name = topic.split(':', 1)
+                    topic_conditions.append('(subject = ? AND topic = ?)')
+                    params.extend([subject, topic_name])
+
+            if topic_conditions:
+                query = f'''
+                    SELECT id, title, question_type, subject, topic, subtopic,
+                           difficulty_level, estimated_time, bloom_level
+                    FROM questions
+                    WHERE {' OR '.join(topic_conditions)}
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                '''
+            else:
+                # Fallback to all questions if no valid topics
+                query = '''
+                    SELECT id, title, question_type, subject, topic, subtopic,
+                           difficulty_level, estimated_time, bloom_level
+                    FROM questions
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                '''
+                params = []
+        else:
+            # Get random question from all topics
+            query = '''
+                SELECT id, title, question_type, subject, topic, subtopic,
+                       difficulty_level, estimated_time, bloom_level
+                FROM questions
+                ORDER BY RANDOM()
+                LIMIT 1
+            '''
+            params = []
+
+        cursor.execute(query, params)
+        question_data = cursor.fetchone()
+
+        if not question_data:
+            return jsonify({
+                'status': 'error',
+                'message': 'No questions found for the selected topics'
+            }), 404
+
+        # Read markdown file
+        question_id = question_data[0]
+        subject, topic, subtopic = question_data[3], question_data[4], question_data[5]
+        folder_path = create_folder_structure(subject, topic, subtopic)
+        file_path = folder_path / f"{question_id}.md"
+
+        content = ""
+        if file_path.exists():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'question': {
+                'id': question_data[0],
+                'title': question_data[1],
+                'question_type': question_data[2],
+                'subject': question_data[3],
+                'topic': question_data[4],
+                'subtopic': question_data[5],
+                'difficulty_level': question_data[6],
+                'estimated_time': question_data[7],
+                'bloom_level': question_data[8],
+                'content': content
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
         }), 400
 
 if __name__ == '__main__':
