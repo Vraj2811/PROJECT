@@ -4,9 +4,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
-import random
 from ai import QuestionGenerator
-from paper_generation import PaperGeneration
+from teacher_backend import TeacherBackend
+from enhanced_paper_generation import EnhancedPaperGeneration
 
 app = Flask(__name__)
 
@@ -21,9 +21,6 @@ QUESTION_BANK_FOLDER = 'Question Bank'
 USERS = {
     'teacher': {'password': 'teacher123', 'role': 'teacher'},
     'student': {'password': 'student123', 'role': 'student'},
-    # Add more users as needed
-    'admin': {'password': 'admin123', 'role': 'teacher'},
-    'john_doe': {'password': 'student456', 'role': 'student'}
 }
 
 def login_required(f):
@@ -216,6 +213,12 @@ def teacher():
                          question_types=QUESTION_TYPES,
                          bloom_levels=BLOOM_LEVELS,
                          difficulty_levels=DIFFICULTY_LEVELS)
+
+@app.route('/teacher/manage')
+@teacher_required
+def teacher_management():
+    """Teacher question management page"""
+    return render_template('teacher_management.html')
 
 @app.route('/submit', methods=['POST'])
 @teacher_required
@@ -582,7 +585,7 @@ def create_paper():
 def get_paper_subjects():
     """Get available subjects for paper generation"""
     try:
-        paper_gen = PaperGeneration(DATABASE_PATH)
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
         subjects = paper_gen.get_available_subjects()
 
         return jsonify({
@@ -607,7 +610,7 @@ def get_paper_topics():
                 'message': 'Subject parameter is required'
             }), 400
 
-        paper_gen = PaperGeneration(DATABASE_PATH)
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
         topics = paper_gen.get_topics_for_subject(subject)
 
         return jsonify({
@@ -634,7 +637,7 @@ def get_paper_subtopics():
                 'message': 'Subject and topic parameters are required'
             }), 400
 
-        paper_gen = PaperGeneration(DATABASE_PATH)
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
         subtopics = paper_gen.get_subtopics_for_topic(subject, topic)
 
         return jsonify({
@@ -661,7 +664,7 @@ def generate_paper():
                 'message': 'Total questions is required'
             }), 400
 
-        paper_gen = PaperGeneration(DATABASE_PATH)
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
         result = paper_gen.generate_paper(criteria)
 
         return jsonify(result)
@@ -688,7 +691,7 @@ def save_paper():
                 'message': 'Paper data is required'
             }), 400
 
-        paper_gen = PaperGeneration(DATABASE_PATH)
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
         file_path = paper_gen.save_paper_to_file(paper_data, filename, format_type)
 
         return jsonify({
@@ -831,6 +834,194 @@ def get_random_question():
                 'estimated_time': question_data[7],
                 'bloom_level': question_data[8],
                 'content': content
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+# ==================== TEACHER BACKEND API ENDPOINTS ====================
+
+@app.route('/api/teacher/questions', methods=['GET'])
+@teacher_required
+def teacher_get_questions():
+    """Get all questions for teacher management"""
+    try:
+        backend = TeacherBackend(DATABASE_PATH, QUESTION_BANK_FOLDER)
+
+        # Get filters from query parameters
+        filters = {}
+        if request.args.get('subject'):
+            filters['subject'] = request.args.get('subject')
+        if request.args.get('topic'):
+            filters['topic'] = request.args.get('topic')
+        if request.args.get('difficulty_level'):
+            filters['difficulty_level'] = request.args.get('difficulty_level')
+        if request.args.get('question_type'):
+            filters['question_type'] = request.args.get('question_type')
+
+        result = backend.get_all_questions(filters if filters else None)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/question/<int:question_id>', methods=['GET'])
+@teacher_required
+def teacher_get_question(question_id):
+    """Get a specific question for editing"""
+    try:
+        backend = TeacherBackend(DATABASE_PATH, QUESTION_BANK_FOLDER)
+        result = backend.get_question(question_id)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/question', methods=['POST'])
+@teacher_required
+def teacher_add_question():
+    """Add a new question via API"""
+    try:
+        data = request.get_json()
+
+        backend = TeacherBackend(DATABASE_PATH, QUESTION_BANK_FOLDER)
+        result = backend.add_question(data)
+
+        status_code = 200 if result['status'] == 'success' else 400
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/question/<int:question_id>', methods=['PUT'])
+@teacher_required
+def teacher_update_question(question_id):
+    """Update an existing question"""
+    try:
+        data = request.get_json()
+
+        backend = TeacherBackend(DATABASE_PATH, QUESTION_BANK_FOLDER)
+        result = backend.update_question(question_id, data)
+
+        status_code = 200 if result['status'] == 'success' else 400
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/question/<int:question_id>', methods=['DELETE'])
+@teacher_required
+def teacher_delete_question(question_id):
+    """Delete a question"""
+    try:
+        backend = TeacherBackend(DATABASE_PATH, QUESTION_BANK_FOLDER)
+        result = backend.delete_question(question_id)
+
+        status_code = 200 if result['status'] == 'success' else 400
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/paper/generate', methods=['POST'])
+@teacher_required
+def teacher_generate_paper():
+    """Generate a question paper using enhanced generation"""
+    try:
+        criteria = request.get_json()
+
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
+        result = paper_gen.generate_paper(criteria)
+
+        status_code = 200 if result['status'] in ['success', 'warning'] else 400
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/paper/save', methods=['POST'])
+@teacher_required
+def teacher_save_paper():
+    """Save generated paper to file"""
+    try:
+        data = request.get_json()
+
+        paper_gen = EnhancedPaperGeneration(DATABASE_PATH)
+        result = paper_gen.save_paper(
+            data.get('paper_data'),
+            data.get('filename', f'paper_{datetime.now().strftime("%Y%m%d_%H%M%S")}'),
+            data.get('format', 'markdown')
+        )
+
+        status_code = 200 if result['status'] == 'success' else 400
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/teacher/statistics', methods=['GET'])
+@teacher_required
+def teacher_get_statistics():
+    """Get statistics about questions in the database"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        # Total questions
+        cursor.execute('SELECT COUNT(*) FROM questions')
+        total_questions = cursor.fetchone()[0]
+
+        # Questions by subject
+        cursor.execute('SELECT subject, COUNT(*) FROM questions GROUP BY subject')
+        by_subject = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Questions by difficulty
+        cursor.execute('SELECT difficulty_level, COUNT(*) FROM questions GROUP BY difficulty_level')
+        by_difficulty = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Questions by type
+        cursor.execute('SELECT question_type, COUNT(*) FROM questions GROUP BY question_type')
+        by_type = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # AI generated count
+        cursor.execute('SELECT COUNT(*) FROM questions WHERE is_ai_generated = 1')
+        ai_generated = cursor.fetchone()[0]
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'statistics': {
+                'total_questions': total_questions,
+                'by_subject': by_subject,
+                'by_difficulty': by_difficulty,
+                'by_type': by_type,
+                'ai_generated': ai_generated
             }
         })
 

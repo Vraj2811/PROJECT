@@ -2,57 +2,13 @@
 let selectedTopics = [];
 let currentQuestion = null;
 let practiceStarted = false;
-let loadingModal = null; // Store modal instance globally
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the loading modal once
-    try {
-        const modalElement = document.getElementById('loadingModal');
-        if (modalElement) {
-            loadingModal = new bootstrap.Modal(modalElement, {
-                backdrop: 'static',
-                keyboard: false
-            });
-            console.log('Loading modal initialized successfully');
-        } else {
-            console.error('Loading modal element not found');
-        }
-    } catch (error) {
-        console.error('Error initializing modal:', error);
-    }
-
     loadTopics();
     setupEventListeners();
 });
 
-// Helper function to safely hide the loading modal
-function hideLoadingModal() {
-    if (loadingModal) {
-        try {
-            loadingModal.hide();
-            console.log('Modal hidden successfully');
-        } catch (error) {
-            console.error('Error hiding modal:', error);
-            // Force hide by manipulating DOM directly
-            try {
-                const modalElement = document.getElementById('loadingModal');
-                if (modalElement) {
-                    modalElement.style.display = 'none';
-                    modalElement.classList.remove('show');
-                    document.body.classList.remove('modal-open');
-                    // Remove backdrop if it exists
-                    const backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) {
-                        backdrop.remove();
-                    }
-                    console.log('Modal force hidden');
-                }
-            } catch (forceError) {
-                console.error('Error force hiding modal:', forceError);
-            }
-        }
-    }
-}
+
 
 function setupEventListeners() {
     // Select all topics checkbox
@@ -187,47 +143,9 @@ function startPracticeSession() {
 function loadNextQuestion() {
     console.log('Loading next question...'); // Debug log
 
-    // Ensure modal is available and properly initialized
-    if (!loadingModal) {
-        console.log('Reinitializing modal...');
-        try {
-            const modalElement = document.getElementById('loadingModal');
-            if (modalElement) {
-                loadingModal = new bootstrap.Modal(modalElement, {
-                    backdrop: 'static',
-                    keyboard: false
-                });
-            }
-        } catch (error) {
-            console.error('Error reinitializing modal:', error);
-        }
-    }
-
-    // Show loading modal
-    if (loadingModal) {
-        try {
-            loadingModal.show();
-            console.log('Modal shown successfully');
-        } catch (error) {
-            console.error('Error showing modal:', error);
-            // Try to reinitialize and show again
-            try {
-                const modalElement = document.getElementById('loadingModal');
-                loadingModal = new bootstrap.Modal(modalElement);
-                loadingModal.show();
-                console.log('Modal reinitialized and shown');
-            } catch (retryError) {
-                console.error('Error on modal retry:', retryError);
-            }
-        }
-    } else {
-        console.error('Loading modal not available');
-    }
-
-    // Set a timeout to hide modal if request takes too long (10 seconds)
-    const modalTimeout = setTimeout(() => {
-        console.warn('Request timeout - hiding modal');
-        hideLoadingModal();
+    // Set a timeout to show error if request takes too long (10 seconds)
+    const requestTimeout = setTimeout(() => {
+        console.warn('Request timeout');
         showError('Request timed out. Please try again.');
     }, 10000);
 
@@ -241,7 +159,7 @@ function loadNextQuestion() {
 
     fetch(`/api/practice/random-question?${params.toString()}`)
         .then(response => {
-            clearTimeout(modalTimeout); // Clear timeout on response
+            clearTimeout(requestTimeout); // Clear timeout on response
             console.log('Response received:', response.status);
 
             if (!response.ok) {
@@ -252,9 +170,6 @@ function loadNextQuestion() {
         .then(data => {
             console.log('Data received:', data);
 
-            // Hide loading modal
-            hideLoadingModal();
-
             if (data.status === 'success') {
                 currentQuestion = data.question;
                 displayQuestion(currentQuestion);
@@ -264,11 +179,8 @@ function loadNextQuestion() {
             }
         })
         .catch(error => {
-            clearTimeout(modalTimeout); // Clear timeout on error
+            clearTimeout(requestTimeout); // Clear timeout on error
             console.error('Error loading question:', error);
-
-            // Hide loading modal on error
-            hideLoadingModal();
             showError('Error loading question. Please try again.');
         });
 }
@@ -349,9 +261,6 @@ function endPracticeSession() {
 }
 
 function showError(message) {
-    // Ensure modal is hidden when showing error
-    hideLoadingModal();
-
     // Create and show an alert
     const alertDiv = document.createElement('div');
     alertDiv.className = 'alert alert-danger alert-dismissible fade show';

@@ -1,16 +1,16 @@
 // Student Practice Interface JavaScript
 
+// Global variables
+let currentQuestions = [];
+let currentSelection = {
+    subject: null,
+    topic: null,
+    subtopic: null
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize the practice interface
     loadQuestionTree();
-    
-    // Global variables
-    let currentQuestions = [];
-    let currentSelection = {
-        subject: null,
-        topic: null,
-        subtopic: null
-    };
 });
 
 /**
@@ -244,15 +244,9 @@ function renderQuestionList(questions, subject, topic, subtopic) {
  */
 async function loadQuestionDetail(questionId) {
     try {
-        // Show loading modal
-        const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
-        loadingModal.show();
-        
         const response = await fetch(`/api/practice/question/${questionId}`);
         const result = await response.json();
-        
-        loadingModal.hide();
-        
+
         if (result.status === 'success') {
             renderQuestionDetail(result.question);
             showQuestionDetail(true);
