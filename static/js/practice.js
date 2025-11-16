@@ -264,8 +264,14 @@ async function loadQuestionDetail(questionId) {
  */
 function renderQuestionDetail(question) {
     document.getElementById('question-title').textContent = question.title;
-    document.getElementById('question-type-detail').textContent = question.question_type;
-    document.getElementById('question-difficulty-detail').textContent = question.difficulty_level;
+    
+    // Update badges in header
+    document.getElementById('question-type-badge').textContent = question.question_type;
+    document.getElementById('difficulty-badge').textContent = question.difficulty_level;
+    
+    // Update metadata fields
+    document.getElementById('question-subject').textContent = currentSelection.subject || 'N/A';
+    document.getElementById('question-topic').textContent = currentSelection.topic || 'N/A';
     document.getElementById('question-time-detail').textContent = question.estimated_time;
     document.getElementById('question-bloom-detail').textContent = question.bloom_level;
     
@@ -277,6 +283,60 @@ function renderQuestionDetail(question) {
     } catch (error) {
         contentContainer.innerHTML = `<div class="alert alert-danger">Error rendering question content: ${error.message}</div>`;
     }
+    
+    // Clear previous answer
+    document.getElementById('student-answer').value = '';
+    
+    // Setup answer buttons
+    setupAnswerButtons();
+}
+
+/**
+ * Setup answer submission buttons
+ */
+function setupAnswerButtons() {
+    const submitBtn = document.getElementById('submit-answer-btn');
+    const clearBtn = document.getElementById('clear-answer-btn');
+    const answerTextarea = document.getElementById('student-answer');
+    
+    // Remove old event listeners by cloning and replacing
+    const newSubmitBtn = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+    
+    const newClearBtn = clearBtn.cloneNode(true);
+    clearBtn.parentNode.replaceChild(newClearBtn, clearBtn);
+    
+    // Add new event listeners
+    newSubmitBtn.addEventListener('click', () => {
+        const answer = answerTextarea.value.trim();
+        if (answer === '') {
+            alert('Please write an answer before submitting.');
+            return;
+        }
+        
+        // Show success message
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+        alertDiv.innerHTML = `
+            <i class="bi bi-check-circle-fill"></i> Answer submitted successfully!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insert after the buttons
+        newSubmitBtn.parentElement.parentElement.appendChild(alertDiv);
+        
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 3000);
+        
+        console.log('Answer submitted:', answer);
+    });
+    
+    newClearBtn.addEventListener('click', () => {
+        answerTextarea.value = '';
+        answerTextarea.focus();
+    });
 }
 
 /**
